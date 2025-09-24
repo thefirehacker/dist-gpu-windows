@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Windows RTX 2050 Worker for Distributed PyTorch Training
-This script runs on the Windows machine with RTX 2050 GPU
+Windows Worker for Distributed PyTorch - IP ONLY (No Hostname Resolution)
+This script forces IP-only connections to avoid hostname resolution issues.
 """
 
 import torch
@@ -14,7 +14,6 @@ import socket
 def get_local_ip():
     """Get the local IP address of this Windows machine"""
     try:
-        # Connect to a remote address to determine local IP
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
@@ -35,161 +34,207 @@ def check_cuda_setup():
         print(f"GPU Name: {torch.cuda.get_device_name(0)}")
         print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     else:
-        print("❌ CUDA not available! Please install PyTorch with CUDA support:")
-        print("pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118")
-        return False
+        print("⚠️  CUDA not available! Running on CPU")
     
     return True
 
-def initialize_distributed_worker(master_addr, master_port="12355"):
-    """Initialize this Windows machine as a distributed worker"""
+def initialize_distributed_worker_ip_only(master_ip):
+    """Initialize Windows worker with FORCED IP-only connection"""
     
-    # Configuration
-    WORLD_SIZE = 2  # Mac (rank 0) + Windows (rank 1)
-    RANK = 1       # This Windows machine is rank 1
+    print(f"\n=== IP-ONLY Distributed Worker Setup ===")
+    print(f"🌐 Master IP (Mac): {master_ip}")
+    print(f"🚫 NO hostname resolution - IP ONLY!")
     
-    # Set environment variables
-    os.environ['MASTER_ADDR'] = master_addr
-    os.environ['MASTER_PORT'] = master_port
-    os.environ['WORLD_SIZE'] = str(WORLD_SIZE)
-    os.environ['RANK'] = str(RANK)
+    # COMPLETELY clear hostname-related environment variables
+    hostname_vars = ['HOSTNAME', 'HOST', 'COMPUTERNAME', 'USERDOMAIN', 'USERDNSDOMAIN']
+    for var in hostname_vars:
+        if var in os.environ:
+            del os.environ[var]
+            print(f"🗑️  Cleared {var}")
     
-    print(f"\n=== Distributed Worker Setup ===")
-    print(f"Master Address: {master_addr}")
-    print(f"Master Port: {master_port}")
-    print(f"World Size: {WORLD_SIZE}")
-    print(f"This machine's rank: {RANK}")
+    # Set FORCED IP-only environment
+    os.environ['MASTER_ADDR'] = master_ip  # MUST be IP, not hostname
+    os.environ['MASTER_PORT'] = '12355'
+    os.environ['WORLD_SIZE'] = '2'
+    os.environ['RANK'] = '1'  # Windows is rank 1
+    
+    # Anti-hostname resolution settings
+    os.environ['GLOO_SOCKET_IFNAME'] = ''
+    os.environ['NCCL_SOCKET_IFNAME'] = ''
+    os.environ['GLOO_DEVICE_TRANSPORT'] = 'TCP'
+    os.environ['GLOO_SOCKET_FAMILY'] = 'AF_INET'
+    os.environ['TP_SOCKET_IFNAME'] = ''
+    
+    print(f"✅ Environment configured:")
+    print(f"   MASTER_ADDR = {os.environ['MASTER_ADDR']}")
+    print(f"   MASTER_PORT = {os.environ['MASTER_PORT']}")
+    print(f"   WORLD_SIZE = {os.environ['WORLD_SIZE']}")
+    print(f"   RANK = {os.environ['RANK']}")
     
     try:
-        # Set environment variable to avoid libuv issues
-        os.environ['GLOO_SOCKET_IFNAME'] = ''
-        
-        # Initialize process group with 'gloo' backend for CPU-GPU mixed setup
-        # Use init_method for explicit connection
-        init_method = f'tcp://{master_addr}:{master_port}'
+        # Method 1: Explicit TCP init (most reliable for IP-only)
+        print(f"\n🔄 Attempting IP-only connection...")
+        init_method = f'tcp://{master_ip}:12355'
+        print(f"🌐 TCP Init Method: {init_method}")
         
         dist.init_process_group(
-            backend='gloo', 
+            backend='gloo',
             init_method=init_method,
-            rank=RANK,
-            world_size=WORLD_SIZE,
-            timeout=torch.distributed.constants.default_pg_timeout
+            rank=1,
+            world_size=2,
+            timeout=torch.distributed.default_pg_timeout
         )
         
-        print(f"✅ Distributed worker initialized successfully!")
+        print(f"✅ IP-only connection successful!")
         print(f"Rank: {dist.get_rank()}, World size: {dist.get_world_size()}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ IP-only connection failed: {e}")
+        
+        # Method 2: Environment variable fallback
+        try:
+            print(f"🔄 Trying environment variable method...")
+            dist.init_process_group(backend='gloo')
+            print(f"✅ Environment method successful!")
+            return True
+        except Exception as e2:
+            print(f"❌ Environment method also failed: {e2}")
+            return False
+
+def test_connection():
+    """Test the distributed connection"""
+    if not dist.is_initialized():
+        print("❌ Distributed not initialized")
+        return False
+    
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
+    print(f"\n=== Connection Test ===")
+    print(f"✅ Rank {rank} (Windows): Connected!")
+    print(f"🖥️  Device: {device}")
+    print(f"🌐 World size: {world_size}")
+    
+    try:
+        # Test barrier synchronization
+        print(f"🔄 Testing barrier synchronization...")
+        dist.barrier()
+        print(f"✅ Barrier test successful!")
+        
+        # Test simple tensor operations
+        print(f"🔄 Testing tensor operations...")
+        input_tensor = torch.tensor([rank * 100, rank * 100 + 1], dtype=torch.int64)
+        if device.type == 'cuda':
+            input_tensor = input_tensor.to(device)
+        
+        tensor_list = [torch.zeros(2, dtype=torch.int64) for _ in range(world_size)]
+        if device.type == 'cuda':
+            tensor_list = [t.to(device) for t in tensor_list]
+        
+        print(f"📤 Sending: {input_tensor}")
+        dist.all_gather(tensor_list, input_tensor)
+        
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        
+        print(f"📥 Received: {tensor_list}")
+        print(f"✅ Tensor operations successful!")
         
         return True
         
     except Exception as e:
-        print(f"❌ Failed to initialize distributed worker: {e}")
-        print("\nTroubleshooting tips:")
-        print("1. Ensure both machines are on the same network")
-        print("2. Check that the Mac's IP address is correct")
-        print("3. Verify port 12355 is not blocked by firewall")
-        print("4. Make sure the Mac coordinator is running first")
-        print("5. Try a different backend or check PyTorch installation")
+        print(f"❌ Connection test failed: {e}")
         return False
 
-def test_distributed_operations():
-    """Test distributed operations on this Windows worker"""
-    
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    device = torch.device("cuda:0")  # Use RTX 2050
-    
-    print(f"\n=== Testing Distributed Operations ===")
-    print(f"Rank {rank} (Windows RTX 2050): Running on device {device}")
-    
-    # Test 1: Basic all_gather
-    print("\n--- Test 1: Basic All-Gather ---")
-    tensor_list = [torch.zeros(3, dtype=torch.int64).to(device) for _ in range(world_size)]
-    input_tensor = torch.tensor([rank*100, rank*100+10, rank*100+20], dtype=torch.int64).to(device)
-    
-    print(f"Rank {rank}: Input tensor: {input_tensor}")
-    
-    dist.all_gather(tensor_list, input_tensor)
-    torch.cuda.synchronize()  # Ensure GPU operations complete
-    
-    print(f"Rank {rank}: Gathered tensors: {tensor_list}")
-    
-    # Test 2: Advanced operations with timing
-    print("\n--- Test 2: Advanced Operations ---")
-    tensor_size = (2, 3)
-    tensor_list_adv = [torch.zeros(tensor_size, dtype=torch.int64).to(device) for _ in range(world_size)]
-    input_tensor_adv = torch.tensor([[rank*10, rank*10+1, rank*10+2], 
-                                   [rank*10+3, rank*10+4, rank*10+5]], 
-                                  dtype=torch.int64).to(device)
-    
-    start_time = time.time()
-    dist.all_gather(tensor_list_adv, input_tensor_adv)
-    torch.cuda.synchronize()
-    end_time = time.time()
-    
-    print(f"Rank {rank}: Advanced all-gather completed in {end_time - start_time:.4f} seconds")
-    print(f"Rank {rank}: Input shape: {input_tensor_adv.shape}")
-    print(f"Rank {rank}: Input tensor:\n{input_tensor_adv}")
-    
-    # Test 3: Barrier synchronization
-    print("\n--- Test 3: Barrier Synchronization ---")
-    print(f"Rank {rank}: Waiting at barrier...")
-    dist.barrier()
-    print(f"Rank {rank}: Barrier passed! All processes synchronized.")
-    
-    return True
-
 def main():
-    """Main function to run the Windows worker"""
+    """Main function"""
     
-    print("🚀 Windows RTX 2050 Distributed Worker")
-    print("=" * 50)
+    print("🚀 Windows Distributed Worker - IP ONLY VERSION")
+    print("=" * 60)
+    print("🎯 This version FORCES IP-only connections (no hostname resolution)")
+    print("=" * 60)
     
-    # Check CUDA setup
+    # Check setup
     if not check_cuda_setup():
-        sys.exit(1)
+        print("⚠️  Continuing without CUDA...")
     
-    # Get local IP for reference
+    # Show local IP for reference
     local_ip = get_local_ip()
-    print(f"\nThis Windows machine IP: {local_ip}")
+    print(f"\n📍 This Windows machine IP: {local_ip}")
     
-    # Get Mac's IP address
-    print("\n" + "=" * 50)
-    print("CONFIGURATION REQUIRED:")
-    print("=" * 50)
-    print("Please enter your Mac's IP address (from the notebook output)")
+    # Get Mac IP
+    print(f"\n{'='*50}")
+    print("REQUIRED: Mac Coordinator IP Address")
+    print("='*50")
+    print("Enter the IP address of your Mac (NOT hostname!)")
     print("Example: 192.168.1.100")
     
     while True:
-        master_addr = input("\nEnter Mac's IP address: ").strip()
-        if master_addr and master_addr != "127.0.0.1":
-            break
-        print("Please enter a valid IP address (not localhost)")
+        mac_ip = input("\n🖥️  Enter Mac IP address: ").strip()
+        
+        # Validate it's an IP address, not hostname
+        if not mac_ip:
+            print("❌ Please enter an IP address")
+            continue
+        
+        if mac_ip == "127.0.0.1" or mac_ip == "localhost":
+            print("❌ Cannot use localhost - enter the actual network IP")
+            continue
+        
+        # Basic IP validation
+        parts = mac_ip.split('.')
+        if len(parts) == 4:
+            try:
+                for part in parts:
+                    if not (0 <= int(part) <= 255):
+                        raise ValueError
+                break
+            except ValueError:
+                print("❌ Invalid IP format")
+                continue
+        else:
+            print("❌ Invalid IP format (must be x.x.x.x)")
+            continue
     
-    # Initialize distributed worker
-    if not initialize_distributed_worker(master_addr):
+    # Initialize worker
+    print(f"\n🔄 Connecting to Mac at {mac_ip}...")
+    if not initialize_distributed_worker_ip_only(mac_ip):
+        print(f"\n❌ Connection failed!")
+        print(f"💡 Troubleshooting:")
+        print(f"1. Ensure Mac coordinator is running first")
+        print(f"2. Verify IP address {mac_ip} is correct")
+        print(f"3. Check firewall settings on both machines")
+        print(f"4. Ensure both machines are on same network")
         sys.exit(1)
     
+    # Test connection
+    if not test_connection():
+        print(f"❌ Connection tests failed")
+        sys.exit(1)
+    
+    # Keep worker alive
     try:
-        # Test distributed operations
-        test_distributed_operations()
+        print(f"\n🎉 Windows worker successfully connected!")
+        print(f"🎯 GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
+        print(f"🌐 Connected to Mac at {mac_ip}")
+        print(f"🔄 Ready for distributed operations...")
+        print(f"\n⌨️  Press Ctrl+C to stop the worker")
         
-        print(f"\n✅ Windows worker is ready and operational!")
-        print(f"🎯 GPU: {torch.cuda.get_device_name(0)}")
-        print(f"🌐 Connected to Mac coordinator at {master_addr}")
-        print(f"⏳ Waiting for distributed operations...")
-        
-        # Keep worker alive for operations
+        # Keep alive and wait for operations
         while True:
             time.sleep(1)
             
     except KeyboardInterrupt:
-        print(f"\n🛑 Worker shutting down...")
+        print(f"\n🛑 Shutting down worker...")
     except Exception as e:
-        print(f"\n❌ Error during operations: {e}")
+        print(f"\n❌ Error: {e}")
     finally:
         try:
-            dist.destroy_process_group()
-            print("✅ Distributed process group destroyed")
+            if dist.is_initialized():
+                dist.destroy_process_group()
+                print("✅ Cleanup completed")
         except:
             pass
 
