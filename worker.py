@@ -71,9 +71,32 @@ def initialize_distributed_worker_ip_only(master_ip):
     print(f"   WORLD_SIZE = {os.environ['WORLD_SIZE']}")
     print(f"   RANK = {os.environ['RANK']}")
     
+    # First wait for Mac coordinator to start listening
+    print(f"\n🔄 Waiting for Mac coordinator to start listening on port 12355...")
+    
+    # Test connection first
+    max_retries = 30  # 30 seconds
+    for attempt in range(max_retries):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                result = s.connect_ex((master_ip, 12355))
+                if result == 0:
+                    print(f"✅ Port 12355 is reachable on {master_ip}")
+                    break
+        except Exception:
+            pass
+        
+        print(f"⏳ Attempt {attempt + 1}/{max_retries}: Port not ready, waiting...")
+        time.sleep(1)
+    else:
+        print(f"❌ Port 12355 never became available on {master_ip}")
+        print(f"💡 Make sure to run the Mac coordinator first!")
+        return False
+    
     try:
         # Method 1: Explicit TCP init (most reliable for IP-only)
-        print(f"\n🔄 Attempting IP-only connection...")
+        print(f"\n🔄 Attempting connection to {master_ip}:12355...")
         init_method = f'tcp://{master_ip}:12355'
         print(f"🌐 TCP Init Method: {init_method}")
         
@@ -85,12 +108,12 @@ def initialize_distributed_worker_ip_only(master_ip):
             timeout=torch.distributed.default_pg_timeout
         )
         
-        print(f"✅ IP-only connection successful!")
+        print(f"✅ Connection successful!")
         print(f"Rank: {dist.get_rank()}, World size: {dist.get_world_size()}")
         return True
         
     except Exception as e:
-        print(f"❌ IP-only connection failed: {e}")
+        print(f"❌ TCP connection failed: {e}")
         
         # Method 2: Environment variable fallback
         try:
