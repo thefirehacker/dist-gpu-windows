@@ -1,0 +1,12 @@
+# Windows RTX 2050 Worker Requirements
+# Install with: pip install -r requirements.txt
+
+# PyTorch with CUDA support for RTX 2050 (compatible with CUDA 12.3)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Distributed training support
+nbdistributed
+
+# Additional utilities
+numpy>=1.21.0
