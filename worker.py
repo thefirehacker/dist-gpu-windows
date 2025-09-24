@@ -61,8 +61,20 @@ def initialize_distributed_worker(master_addr, master_port="12355"):
     print(f"This machine's rank: {RANK}")
     
     try:
+        # Set environment variable to avoid libuv issues
+        os.environ['GLOO_SOCKET_IFNAME'] = ''
+        
         # Initialize process group with 'gloo' backend for CPU-GPU mixed setup
-        dist.init_process_group(backend='gloo', timeout=torch.distributed.constants.default_pg_timeout)
+        # Use init_method for explicit connection
+        init_method = f'tcp://{master_addr}:{master_port}'
+        
+        dist.init_process_group(
+            backend='gloo', 
+            init_method=init_method,
+            rank=RANK,
+            world_size=WORLD_SIZE,
+            timeout=torch.distributed.constants.default_pg_timeout
+        )
         
         print(f"✅ Distributed worker initialized successfully!")
         print(f"Rank: {dist.get_rank()}, World size: {dist.get_world_size()}")
@@ -76,6 +88,7 @@ def initialize_distributed_worker(master_addr, master_port="12355"):
         print("2. Check that the Mac's IP address is correct")
         print("3. Verify port 12355 is not blocked by firewall")
         print("4. Make sure the Mac coordinator is running first")
+        print("5. Try a different backend or check PyTorch installation")
         return False
 
 def test_distributed_operations():
