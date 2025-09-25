@@ -13,9 +13,14 @@ import sys
 import time
 import socket
 
+# os.environ['GLOO_SOCKET_FAMILY'] = 'AF_INET'
+# os.environ['GLOO_USE_IPV6'] = '0'
+# os.environ['GLOO_DEVICE_TRANSPORT'] = 'TCP'
+
+os.environ['GLOO_SOCKET_IFNAME'] = 'Wi-Fi'     # ← use your exact adapter name
+os.environ['TP_SOCKET_IFNAME']   = 'Wi-Fi'     # ← same adapter
 os.environ['GLOO_SOCKET_FAMILY'] = 'AF_INET'
-os.environ['GLOO_USE_IPV6'] = '0'
-os.environ['GLOO_DEVICE_TRANSPORT'] = 'TCP'
+os.environ['GLOO_USE_IPV6']      = '0'
 
 def get_local_ip() -> str:
     """Get the local IP address of this Windows machine."""
