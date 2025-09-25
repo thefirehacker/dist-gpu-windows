@@ -53,7 +53,7 @@ def initialize_distributed_via_store(mac_ip: str, rank: int, world_size: int, po
     print(f"Rank: {rank} / World Size: {world_size}")
 
     try:
-        store = dist.TCPStore(mac_ip, port, world_size, is_master=False)
+        store = dist.TCPStore(mac_ip, port, world_size, is_master=False, use_libuv=False)
         dist.init_process_group(
             backend="gloo",
             store=store,
