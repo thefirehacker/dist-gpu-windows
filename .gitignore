@@ -130,3 +130,6 @@ old/
 # Log files
 *.log
 logs/
+
+# etcd
+default.etcd/*

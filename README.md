@@ -62,30 +62,45 @@ jupyter notebook
 ```bash
 # Install PyTorch with CUDA support
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# Run the worker script
-python worker.py
 ```
 
-#### 3. Connection Sequence
+#### 3. Recommended: torchrun + etcd rendezvous (PRO setup)
 
-**IMPORTANT: Follow this exact order:**
+Use HTTP-based rendezvous to avoid cross-OS hostname issues. Mac hosts etcd only; Windows nodes form the Gloo group directly.
 
-1. **Run Mac cells in order** (in Jupyter notebook):
-   - Cell 1: Install packages
-   - Cell 2: Setup and IP detection  
-   - Cell 3: Configuration
-   - Cell 4: IP verification
-   - Cell 5: Function definitions
-   - Cell 6: **START COORDINATOR** 
+On the Mac (controller):
+```bash
+brew install etcd
+etcd --listen-client-urls http://0.0.0.0:2379 --advertise-client-urls http://0.0.0.0:2379
+```
 
-2. **After Mac shows "Ready"**, run on Windows:
-   ```bash
-   python worker.py
-   ```
-   Enter Mac IP when prompted (auto-detected, e.g., `192.168.29.234`)
+On each Windows GPU machine (replace node_rank per machine):
+```bash
+torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
+  --rdzv_backend=etcd --rdzv_endpoint=192.168.29.234:2379 train_torchrun.py
 
-3. **Connection established** - both machines will show success messages
+# On the second Windows GPU
+torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
+  --rdzv_backend=etcd --rdzv_endpoint=192.168.29.234:2379 train_torchrun.py
+```
+
+Where `192.168.29.234` is your Mac’s LAN IP (the notebook prints it).
+
+Training script used by torchrun:
+```bash
+python train_torchrun.py
+```
+
+Expected output (per rank):
+```text
+[rank 0] world_size=2 device=cuda hostname=WINBOX-1
+[rank 0] gathered=[0, 1]
+[rank 1] world_size=2 device=cuda hostname=WINBOX-2
+[rank 1] gathered=[0, 1]
+```
+
+#### 4. Legacy path (TCPStore notebook + worker.py)
+If you still want to try notebook store + `worker.py`, run the TCPStore cell in `L1-nbdistributed/Ops.ipynb` and then execute `worker.py` on Windows with the Mac IP. The torchrun path above is recommended.
 
 ## 🔧 Configuration
 
