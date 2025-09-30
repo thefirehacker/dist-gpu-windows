@@ -1,6 +1,10 @@
+import os
 import socket
 import torch
 import torch.distributed as dist
+
+# Fix for Windows: Disable libuv if PyTorch was built without it
+os.environ['USE_LIBUV'] = '0'
 
 
 def infer_device() -> torch.device:

@@ -92,13 +92,18 @@ pip install "numpy==1.26.4"
 ```
 
 **Setup: Single GPU (testing):**
-```powershell
-# Option 1: Run standalone (recommended for single node)
-torchrun --standalone --nproc_per_node=1 train_torchrun.py
 
-# Option 2: Explicit c10d backend
-torchrun --nnodes=1 --nproc_per_node=1 --rdzv_backend=c10d --rdzv_endpoint=localhost:29500 train_torchrun.py
+⚠️ **Important:** If you encounter libuv errors with torchrun, use the file-based method instead:
+
+```powershell
+# RECOMMENDED: File-based initialization (always works)
+python train_standalone.py
+
+# Alternative: torchrun (may fail with libuv errors on some Windows builds)
+torchrun --standalone --nproc_per_node=1 train_torchrun.py
 ```
+
+**If torchrun fails**, see `SOLUTION.md` for detailed troubleshooting.
 
 **Setup: Multi-GPU (2+ nodes):**
 
