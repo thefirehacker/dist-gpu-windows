@@ -14,13 +14,27 @@ This project demonstrates how to set up distributed PyTorch training/inference a
 ```
 .
 ├── L1-nbdistributed/
-│   └── Ops.ipynb              # Main Jupyter notebook (Mac coordinator)
-├── worker.py                   # Windows worker script
+│   ├── Ops.ipynb              # DEPRECATED - Old Mac coordinator (TCPStore approach - doesn't work)
+│   └── Ops_02.ipynb           # nbdistributed interactive notebook (run on GPU node)
+├── train_torchrun.py          # Training script for torchrun (RECOMMENDED)
+├── worker.py                   # DEPRECATED - Old Windows worker script
 ├── test_connection.py          # Network connectivity test
 ├── archive/                    # Previous versions and backups
 ├── WINDOWS_SETUP.md           # Detailed Windows setup instructions
 └── README.md                  # This file
 ```
+
+### Which Files to Use:
+
+**✅ For Production/Learning:**
+- `train_torchrun.py` + `torchrun` command (see Step 3 below)
+
+**✅ For Interactive Development:**
+- `Ops_02.ipynb` (nbdistributed) - run on a GPU node in Jupyter
+
+**❌ Deprecated (Don't Use):**
+- `Ops.ipynb` - Old TCPStore approach that failed due to cross-OS issues
+- `worker.py` - Old worker script, replaced by torchrun
 
 ## 🚀 Quick Start
 
