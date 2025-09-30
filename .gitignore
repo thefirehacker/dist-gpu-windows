@@ -133,3 +133,10 @@ logs/
 
 # etcd
 default.etcd/*
+
+#temp files
+temp/*
+
+
+# Etcd
+etcd*
