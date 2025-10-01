@@ -91,21 +91,31 @@ pip install "numpy==1.26.4"
 # Copy train_torchrun.py to each machine
 ```
 
-**Setup: Single GPU (testing):**
+**Setup: Single Node (testing):**
 
-⚠️ **Important:** If you encounter libuv errors with torchrun, use the file-based method instead:
-
-```powershell
-# RECOMMENDED: File-based initialization (always works)
+```bash
+# Single-node distributed training (always works)
 python train_standalone.py
-
-# Alternative: torchrun (may fail with libuv errors on some Windows builds)
-torchrun --standalone --nproc_per_node=1 train_torchrun.py
 ```
 
-**If torchrun fails**, see `SOLUTION.md` for detailed troubleshooting.
+**Setup: Multi-Node (2+ Windows machines):**
 
-**Setup: Multi-GPU (2+ nodes):**
+See the quick start guides:
+- **QUICK_START.md** - Overview
+- **NODE01_MASTER.md** - For Node 01 (Rank 0)
+- **NODE02_WORKER.md** - For Node 02 (Rank 1)
+
+```bash
+# On Node 01 (Master):
+bash run_node0.sh
+
+# On Node 02 (Worker):
+bash run_node1.sh
+```
+
+---
+
+## 🔧 Old Multi-GPU Setup (torchrun - may not work)
 
 **On Windows GPU #1 (Primary - rank 0 + rendezvous host):**
 
