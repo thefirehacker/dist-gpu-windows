@@ -137,10 +137,45 @@ Note: Using Gloo for WSL multi-node compatibility
 
 ---
 
-## Option B: NCCL Backend (Experimental - May Not Work)
+## Option B: NCCL Backend (Requires WSL Mirrored Networking)
 
-### Warning
-NCCL has known compatibility issues with WSL2 NAT networking when connecting across physical machines. Use this only for testing or if you have advanced networking configuration (bridged mode, etc.).
+### Prerequisites: Enable WSL2 Mirrored Networking
+
+**IMPORTANT:** NCCL requires WSL2 mirrored networking mode. You must complete this setup first.
+
+**Requirements:**
+- Windows 11 version 22H2 or later (Build 22621+)
+- Check version in PowerShell: `[System.Environment]::OSVersion.Version`
+
+**Setup Steps (PowerShell as Administrator):**
+
+1. **Create/Edit `.wslconfig` file:**
+```powershell
+# Create .wslconfig with mirrored networking
+@"
+[wsl2]
+networkingMode=mirrored
+"@ | Out-File -FilePath "$env:USERPROFILE\.wslconfig" -Encoding ASCII -Force
+
+# Verify it was created
+Get-Content $env:USERPROFILE\.wslconfig
+```
+
+2. **Shutdown and restart WSL:**
+```powershell
+wsl --shutdown
+Start-Sleep -Seconds 30
+wsl
+```
+
+3. **Verify mirrored networking is working (in WSL):**
+```bash
+ip addr show eth0 | grep "inet "
+```
+
+You should see your **Windows IP** (e.g., `192.168.29.67`), NOT a `172.x.x.x` IP.
+
+If you still see `172.x.x.x`, mirrored mode is not working. Check your Windows version or use Option A (Gloo) instead.
 
 ### Setup Environment Variables:
 ```bash
@@ -154,11 +189,13 @@ export NCCL_DEBUG=INFO
 ```bash
 torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
   --rdzv_backend=c10d \
-  --rdzv_endpoint=172.20.5.204:29400 \
+  --rdzv_endpoint=192.168.29.67:29400 \
   train_torchrun.py
 ```
 
-**Replace `172.20.5.204` with your actual WSL IP from step 3.**
+**Replace `192.168.29.67` with your actual IP (should be same as Windows IP with mirrored mode).**
+
+**Note:** With mirrored networking, your WSL IP = Windows IP, so no port forwarding is needed!
 
 ### NCCL Environment Variables Explained:
 - `NCCL_IB_DISABLE=1` - Disables InfiniBand (not available on consumer hardware)
