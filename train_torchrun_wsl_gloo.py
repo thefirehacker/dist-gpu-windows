@@ -13,21 +13,13 @@ def infer_device() -> torch.device:
 
 
 def main() -> None:
-    # Use NCCL for GPU, Gloo for CPU
-    # NCCL is much faster for GPU-to-GPU communication
-    backend = "nccl" if torch.cuda.is_available() else "gloo"
-    
-    # Configure NCCL for cross-machine communication
-    if backend == "nccl":
-        # Set NCCL to use TCP for cross-machine (not IB/RoCE)
-        os.environ['NCCL_IB_DISABLE'] = '1'
-        os.environ['NCCL_P2P_DISABLE'] = '1'
-        # Use TCP sockets
-        os.environ['NCCL_SOCKET_IFNAME'] = 'eth0'
-        # Enable debug for troubleshooting
-        os.environ['NCCL_DEBUG'] = 'INFO'
+    # Force Gloo backend for WSL multi-node compatibility
+    # NCCL has issues with WSL2 NAT networking when connecting across physical machines
+    # Gloo works reliably with port forwarding and NAT environments
+    backend = "gloo"
     
     print(f"Initializing with backend: {backend}")
+    print(f"Note: Using Gloo for WSL multi-node compatibility")
     
     # torchrun provides env:// rendezvous; do not pass store/init_method here
     dist.init_process_group(backend=backend)
@@ -42,11 +34,11 @@ def main() -> None:
     )
 
     # Simple cross-rank check: gather all ranks
-    # Move tensors to GPU if using NCCL
+    # Gloo works on both CPU and CUDA tensors
     gathered_ranks = [torch.zeros(1, dtype=torch.int64, device=device) for _ in range(world_size)]
     my_rank_tensor = torch.tensor([rank], dtype=torch.int64, device=device)
     dist.all_gather(gathered_ranks, my_rank_tensor)
-    print(f"[rank {rank}] gathered={ [int(t.item()) for t in gathered_ranks] }")
+    print(f"[rank {rank}] gathered={[int(t.item()) for t in gathered_ranks]}")
 
     dist.barrier()
     print(f"[rank {rank}] barrier OK; shutting down")
@@ -55,5 +47,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 
