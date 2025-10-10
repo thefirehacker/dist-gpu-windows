@@ -35,7 +35,7 @@ def main() -> None:
     device = infer_device()
 
     print(
-        f"✅ [rank {rank}] world_size={world_size} device={device} "
+        f"[SUCCESS] [rank {rank}] world_size={world_size} device={device} "
         f"hostname={socket.gethostname()}"
     )
 
@@ -43,17 +43,17 @@ def main() -> None:
     gathered_ranks = [torch.zeros(1, dtype=torch.int64) for _ in range(world_size)]
     my_rank_tensor = torch.tensor([rank], dtype=torch.int64)
     dist.all_gather(gathered_ranks, my_rank_tensor)
-    print(f"✅ [rank {rank}] gathered={ [int(t.item()) for t in gathered_ranks] }")
+    print(f"[SUCCESS] [rank {rank}] gathered={ [int(t.item()) for t in gathered_ranks] }")
 
     dist.barrier()
-    print(f"✅ [rank {rank}] barrier OK; shutting down")
+    print(f"[SUCCESS] [rank {rank}] barrier OK; shutting down")
     dist.destroy_process_group()
     
     # Clean up
     if os.path.exists(temp_file):
         os.remove(temp_file)
     
-    print("\n🎉 Success! Distributed training works on your system!")
+    print("\n[SUCCESS] Distributed training works on your system!")
 
 
 if __name__ == "__main__":

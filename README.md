@@ -4,10 +4,10 @@ A distributed PyTorch setup for running computations across multiple GPU nodes u
 
 ## 🎯 Overview
 
-This project demonstrates how to set up distributed PyTorch training/inference across GPU nodes:
-- **Windows GPU (Primary/Rank 0)**: Acts as rendezvous host and primary worker
-- **Additional GPUs (Rank 1+)**: Join as workers
-- **Note**: Mac can be used for development but is NOT recommended as controller due to M1/etcd compatibility issues
+This project demonstrates how to set up distributed PyTorch training/inference across Windows GPU nodes:
+- **Windows GPU (Primary/Rank 0)**: Acts as master node and primary worker
+- **Windows GPU (Worker/Rank 1)**: Joins as worker node
+- **Architecture**: Both nodes run on Windows with CUDA support
 
 ## 📁 Project Structure
 
@@ -26,86 +26,72 @@ This project demonstrates how to set up distributed PyTorch training/inference a
 
 ### Which Files to Use:
 
-**✅ For Production/Learning:**
-- `train_torchrun.py` + `torchrun` command (see Step 3 below)
+**✅ For Multi-Node Training:**
+- `train_multinode.py` + manual TCP initialization (see Quick Start below)
+
+**✅ For Single-Node Testing:**
+- `train_standalone.py` - Test distributed training on single machine
 
 **✅ For Interactive Development:**
-- `Ops_02.ipynb` (nbdistributed) - run on a GPU node in Jupyter
+- `L1-nbdistributed/Ops.ipynb` (nbdistributed) - run on a GPU node in Jupyter
 
 **❌ Deprecated (Don't Use):**
-- `Ops.ipynb` - Old TCPStore approach that failed due to cross-OS issues
-- `worker.py` - Old worker script, replaced by torchrun
+- `train_torchrun.py` - Old torchrun approach with libuv issues
+- `worker.py` - Old worker script, replaced by train_multinode.py
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-**Mac (Coordinator):**
-- Python 3.11+
-- PyTorch 2.8.0+
-- Jupyter notebook
-- Virtual environment activated
-
-**Windows (Worker):**
+**Both Windows Machines:**
 - Python 3.11+
 - PyTorch with CUDA support
-- NVIDIA RTX 2080 with drivers
-- CUDA toolkit
+- NVIDIA GPU with drivers
+- CUDA toolkit 11.8
+- Virtual environment
 
 ### Setup Steps
 
-#### 1. Mac Setup (Coordinator)
+#### 1. Install Dependencies
 
+On both machines:
 ```bash
-# Clone and navigate to project
-git clone <repository-url>
-cd Code-Scratch
-
-# Create and activate virtual environment
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On macOS/Linux
+.venv\Scripts\activate
 
-# Install dependencies
-pip install torch torchvision jupyter nbdistributed
-
-# Start Jupyter
-jupyter notebook
+# Install PyTorch and dependencies
+pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu118
 ```
 
-#### 2. Windows Setup (Worker)
+#### 2. Single Node Testing
 
+Test on one machine first:
 ```bash
-# Install PyTorch with CUDA support
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-```
-
-#### 3. Recommended: Windows as Controller + c10d Rendezvous
-
-**Architecture:** Primary Windows GPU acts as both rendezvous host AND rank 0 worker. Additional GPUs join as rank 1, 2, etc.
-
-**Prerequisites (all GPU nodes):**
-```powershell
-# Fix NumPy compatibility
-pip install "numpy==1.26.4"
-
-# Copy train_torchrun.py to each machine
-```
-
-**Setup: Single GPU (testing):**
-
-⚠️ **Important:** If you encounter libuv errors with torchrun, use the file-based method instead:
-
-```powershell
-# RECOMMENDED: File-based initialization (always works)
 python train_standalone.py
-
-# Alternative: torchrun (may fail with libuv errors on some Windows builds)
-torchrun --standalone --nproc_per_node=1 train_torchrun.py
 ```
 
-**If torchrun fails**, see `SOLUTION.md` for detailed troubleshooting.
+#### 3. Multi-Node Setup
 
-**Setup: Multi-GPU (2+ nodes):**
+**Node 01 (Master - Rank 0):**
+1. Find your IP: `ipconfig | findstr IPv4`
+2. Open firewall: `New-NetFirewallRule -DisplayName "PyTorch Distributed" -Direction Inbound -LocalPort 29500 -Protocol TCP -Action Allow`
+3. Start master: `python train_multinode.py --rank 0 --world-size 2 --master-addr YOUR_IP`
+
+**Node 02 (Worker - Rank 1):**
+1. Get Node 01's IP address
+2. Start worker: `python train_multinode.py --rank 1 --world-size 2 --master-addr NODE01_IP`
+
+### Quick Reference
+
+See the detailed guides:
+- **NODE01_MASTER.md** - For Node 01 (Rank 0) setup
+- **NODE02_WORKER.md** - For Node 02 (Rank 1) setup
+- **QUICK_START.md** - Overview and troubleshooting
+
+---
+
+## 🔧 Old Multi-GPU Setup (torchrun - may not work)
 
 **On Windows GPU #1 (Primary - rank 0 + rendezvous host):**
 
