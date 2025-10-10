@@ -98,49 +98,75 @@ Address         Port        Address         Port
 ...
 ```
 
-## Run
+## Run - Choose Your Backend
 
 **Start this FIRST (before Node 02):**
 
-In WSL, with virtual environment activated:
+In WSL, with virtual environment activated.
 
-### Standard Run:
+---
+
+## Option A: Gloo Backend (Recommended for WSL Multi-Node)
+
+### Why Gloo?
+WSL2's NAT networking has fundamental limitations with NCCL across physical machines. Gloo works reliably with port forwarding and is the recommended choice for WSL multi-node setups.
+
+### Run Command:
 ```bash
-export NCCL_IB_DISABLE=1
-export NCCL_P2P_DISABLE=1
-export NCCL_SOCKET_IFNAME=eth0
-
 torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
   --rdzv_backend=c10d \
-  --rdzv_endpoint=127.0.0.1:29400 \
-  train_torchrun.py
+  --rdzv_endpoint=172.20.5.204:29400 \
+  train_torchrun_wsl_gloo.py
 ```
 
-### With Debug Logging (recommended for first run):
+**Replace `172.20.5.204` with your actual WSL IP from step 3.**
+
+### Expected Output:
+```
+Initializing with backend: gloo
+Note: Using Gloo for WSL multi-node compatibility
+[rank 0] world_size=2 device=cuda hostname=AIEDX-AsusTUF
+[rank 0] gathered=[0, 1]
+[rank 0] barrier OK; shutting down
+```
+
+### Performance:
+- **Bandwidth**: 1-10 GB/s (CPU-mediated)
+- **Use case**: Development, testing, small models
+- **Reliability**: Excellent with WSL
+
+---
+
+## Option B: NCCL Backend (Experimental - May Not Work)
+
+### Warning
+NCCL has known compatibility issues with WSL2 NAT networking when connecting across physical machines. Use this only for testing or if you have advanced networking configuration (bridged mode, etc.).
+
+### Setup Environment Variables:
 ```bash
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
 export NCCL_SOCKET_IFNAME=eth0
 export NCCL_DEBUG=INFO
+```
 
+### Run Command:
+```bash
 torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
   --rdzv_backend=c10d \
-  --rdzv_endpoint=127.0.0.1:29400 \
+  --rdzv_endpoint=172.20.5.204:29400 \
   train_torchrun.py
 ```
 
-**NCCL Environment Variables Explained:**
+**Replace `172.20.5.204` with your actual WSL IP from step 3.**
+
+### NCCL Environment Variables Explained:
 - `NCCL_IB_DISABLE=1` - Disables InfiniBand (not available on consumer hardware)
 - `NCCL_P2P_DISABLE=1` - Disables peer-to-peer GPU access (not needed for multi-node)
 - `NCCL_SOCKET_IFNAME=eth0` - Use eth0 network interface (WSL's default)
 - `NCCL_DEBUG=INFO` - Show detailed NCCL logs (connection setup, ports used)
 
-## Expected Output
-
-### With `NCCL_DEBUG=INFO` enabled:
-
-The master will wait for Node 02 to connect. You'll see detailed NCCL logs:
-
+### Expected Output (If Successful):
 ```
 Initializing with backend: nccl
 NCCL version 2.x.x+cuda12.4
@@ -155,29 +181,30 @@ NCCL INFO Connected all rings
 [rank 0] barrier OK; shutting down
 ```
 
-### Without debug (standard):
-```
-Initializing with backend: nccl
-[rank 0] world_size=2 device=cuda hostname=AIEDX-AsusTUF
-[rank 0] gathered=[0, 1]
-[rank 0] barrier OK; shutting down
-```
+### Performance (If Working):
+- **Bandwidth**: 10-50 GB/s (GPU-direct)
+- **Use case**: Production, large models
+- **Reliability**: Poor on WSL (use native Linux instead)
 
 ## Troubleshooting
 
-### Connection timeout or "failed to connect to 127.0.0.1:29400"
+### Connection timeout with Gloo backend
 - **Cause**: Port forwarding not set up correctly or port already in use
 - **Fix**: 
   1. Verify port forwarding: `netsh interface portproxy show all` (in PowerShell)
-  2. Check if port is in use: `netstat -an | findstr 29400` (in PowerShell)
-  3. Remove old port forwarding and re-add it
+  2. Check if port is in use: `ss -tulpn | grep 29400` (in WSL)
+  3. Ensure you're using WSL IP for endpoint: `hostname -I` (should match endpoint IP)
 
 ### Node 02 can't connect
 - **Cause**: Firewall blocking or wrong IP shared
 - **Fix**: 
   1. Share your **Windows IP** (from `ipconfig`), NOT WSL IP
   2. Verify firewall rule exists: `Get-NetFirewallRule -DisplayName "PyTorch Distributed 29400"` (PowerShell)
-  3. Test from Node 02: `telnet 192.168.29.67 29400` (if telnet installed)
+  3. Test connectivity: `ping 192.168.29.67` from Node 02
+
+### NCCL timeout or connection reset (Option 2)
+- **Cause**: WSL2 NAT networking limitation - NCCL cannot work reliably across WSL instances on different machines
+- **Fix**: Use Option 1 (Gloo backend) instead, OR move to native Linux for full NCCL support
 
 ### NCCL not available
 - **Cause**: PyTorch installed without CUDA support

@@ -69,31 +69,60 @@ Example: `192.168.29.67`
 ping 192.168.29.67  # Use Node 01's Windows IP
 ```
 
-## Run
+## Run - Choose Your Backend
 
 **Start this SECOND (after Node 01 is running):**
 
-In WSL, with virtual environment activated:
+In WSL, with virtual environment activated.
 
-### Standard Run:
+---
+
+## Option A: Gloo Backend (Recommended for WSL Multi-Node)
+
+### Why Gloo?
+WSL2's NAT networking has fundamental limitations with NCCL across physical machines. Gloo works reliably with port forwarding and is the recommended choice for WSL multi-node setups.
+
+### Run Command:
 ```bash
-export NCCL_IB_DISABLE=1
-export NCCL_P2P_DISABLE=1
-export NCCL_SOCKET_IFNAME=eth0
-
 torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
   --rdzv_backend=c10d \
   --rdzv_endpoint=192.168.29.67:29400 \
-  train_torchrun.py
+  train_torchrun_wsl_gloo.py
 ```
 
-### With Debug Logging (recommended for first run):
+**Replace `192.168.29.67` with Node 01's actual Windows IP address.**
+
+### Expected Output:
+```
+Initializing with backend: gloo
+Note: Using Gloo for WSL multi-node compatibility
+[rank 1] world_size=2 device=cuda hostname=TUF-Node02
+[rank 1] gathered=[0, 1]
+[rank 1] barrier OK; shutting down
+```
+
+### Performance:
+- **Bandwidth**: 1-10 GB/s (CPU-mediated)
+- **Use case**: Development, testing, small models
+- **Reliability**: Excellent with WSL
+
+---
+
+## Option B: NCCL Backend (Experimental - May Not Work)
+
+### Warning
+NCCL has known compatibility issues with WSL2 NAT networking when connecting across physical machines. Use this only for testing or if you have advanced networking configuration (bridged mode, etc.).
+
+### Setup Environment Variables:
 ```bash
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
 export NCCL_SOCKET_IFNAME=eth0
 export NCCL_DEBUG=INFO
+```
 
+### Run Command:
+```bash
 torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
   --rdzv_backend=c10d \
   --rdzv_endpoint=192.168.29.67:29400 \
@@ -102,18 +131,13 @@ torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
 
 **Replace `192.168.29.67` with Node 01's actual Windows IP address.**
 
-**NCCL Environment Variables Explained:**
+### NCCL Environment Variables Explained:
 - `NCCL_IB_DISABLE=1` - Disables InfiniBand (not available on consumer hardware)
 - `NCCL_P2P_DISABLE=1` - Disables peer-to-peer GPU access (not needed for multi-node)
 - `NCCL_SOCKET_IFNAME=eth0` - Use eth0 network interface (WSL's default)
 - `NCCL_DEBUG=INFO` - Show detailed NCCL logs (connection setup, ports used)
 
-## Expected Output
-
-### With `NCCL_DEBUG=INFO` enabled:
-
-You'll see detailed NCCL logs:
-
+### Expected Output (If Successful):
 ```
 Initializing with backend: nccl
 NCCL version 2.x.x+cuda12.4
@@ -128,13 +152,10 @@ NCCL INFO Connected all rings
 [rank 1] barrier OK; shutting down
 ```
 
-### Without debug (standard):
-```
-Initializing with backend: nccl
-[rank 1] world_size=2 device=cuda hostname=TUF-Node02
-[rank 1] gathered=[0, 1]
-[rank 1] barrier OK; shutting down
-```
+### Performance (If Working):
+- **Bandwidth**: 10-50 GB/s (GPU-direct)
+- **Use case**: Production, large models
+- **Reliability**: Poor on WSL (use native Linux instead)
 
 ## Troubleshooting
 
@@ -146,12 +167,12 @@ Initializing with backend: nccl
   3. Check if you can ping Node 01's Windows IP
   4. Verify firewall allows port 29400 on Node 01
 
-### NCCL timeout - "server socket has timed out"
-- **Cause**: NCCL communication ports (20000-40000) blocked by firewall
+### NCCL timeout - "server socket has timed out" or "connection reset"
+- **Cause**: WSL2 NAT networking limitation - NCCL cannot work reliably across WSL instances on different machines
 - **Fix**: 
-  1. Ensure **BOTH** nodes have NCCL firewall rules (see step 5 above)
-  2. On Node 01, verify port forwarding includes NCCL ports
-  3. Run with `NCCL_DEBUG=INFO` to see which port is failing
+  1. **Use Option 1 (Gloo backend)** - this is the recommended workaround for WSL
+  2. Alternative: Move to native Linux on both machines for full NCCL support
+  3. Advanced: Try WSL2 with mirrored networking (Windows 11 22H2+) - experimental
 
 ### Wrong IP address
 - **Cause**: Using WSL IP instead of Windows IP
