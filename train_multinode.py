@@ -70,10 +70,12 @@ def main():
     init_method = f'tcp://{args.master_addr}:{args.master_port}'
     
     # Set environment variables to force IP usage and avoid hostname resolution
-    os.environ['GLOO_SOCKET_IFNAME'] = '*'
-    os.environ['NCCL_SOCKET_IFNAME'] = '*'
+    os.environ['GLOO_SOCKET_IFNAME'] = 'Wi-Fi'  # Force use of WiFi adapter
+    os.environ['NCCL_SOCKET_IFNAME'] = 'Wi-Fi'
     os.environ['MASTER_ADDR'] = args.master_addr
     os.environ['MASTER_PORT'] = args.master_port
+    os.environ['GLOO_SOCKET_FAMILY'] = 'AF_INET'  # Force IPv4
+    os.environ['TP_SOCKET_IFNAME'] = 'Wi-Fi'
     
     print(f"[INFO] Initializing process group...")
     print(f"   Init method: {init_method}")
