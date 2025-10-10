@@ -66,7 +66,7 @@ def main():
     # This avoids the broken TCPStore that torchrun uses
     init_method = f'tcp://{args.master_addr}:{args.master_port}'
     
-    print(f"🔄 Initializing process group...")
+    print(f"[INFO] Initializing process group...")
     print(f"   Init method: {init_method}")
     
     try:
@@ -78,7 +78,7 @@ def main():
             timeout=torch.distributed.timedelta(seconds=30)
         )
     except Exception as e:
-        print(f"❌ Failed to initialize: {e}")
+        print(f"[ERROR] Failed to initialize: {e}")
         print(f"\nTroubleshooting:")
         print(f"1. Ensure rank 0 node ({args.master_addr}) is started FIRST")
         print(f"2. Check firewall: port {args.master_port} must be open on rank 0")
@@ -89,13 +89,13 @@ def main():
     world_size = dist.get_world_size()
     device = infer_device()
 
-    print(f"✅ Successfully initialized!")
+    print(f"[SUCCESS] Successfully initialized!")
     print(f"   Rank: {rank}/{world_size}")
     print(f"   Device: {device}")
     print(f"   Hostname: {socket.gethostname()}\n")
 
     # Test 1: All-gather ranks
-    print(f"🧪 Test 1: All-gather operation...")
+    print(f"[TEST] Test 1: All-gather operation...")
     gathered_ranks = [torch.zeros(1, dtype=torch.int64) for _ in range(world_size)]
     my_rank_tensor = torch.tensor([rank], dtype=torch.int64)
     dist.all_gather(gathered_ranks, my_rank_tensor)
@@ -103,7 +103,7 @@ def main():
     print(f"   [Rank {rank}] Gathered ranks: {gathered_values}")
     
     # Test 2: Broadcast from rank 0
-    print(f"\n🧪 Test 2: Broadcast from rank 0...")
+    print(f"\n[TEST] Test 2: Broadcast from rank 0...")
     if rank == 0:
         broadcast_tensor = torch.tensor([42.0, 100.0, 256.0])
         print(f"   [Rank 0] Broadcasting: {broadcast_tensor.tolist()}")
@@ -114,20 +114,20 @@ def main():
     print(f"   [Rank {rank}] Received: {broadcast_tensor.tolist()}")
     
     # Test 3: Barrier synchronization
-    print(f"\n🧪 Test 3: Barrier synchronization...")
+    print(f"\n[TEST] Test 3: Barrier synchronization...")
     print(f"   [Rank {rank}] Waiting at barrier...")
     dist.barrier()
-    print(f"   [Rank {rank}] ✅ Barrier passed!")
+    print(f"   [Rank {rank}] [SUCCESS] Barrier passed!")
     
     # Test 4: All-reduce sum
-    print(f"\n🧪 Test 4: All-reduce (sum)...")
+    print(f"\n[TEST] Test 4: All-reduce (sum)...")
     reduce_tensor = torch.tensor([rank + 1.0])
     print(f"   [Rank {rank}] Before reduce: {reduce_tensor.item()}")
     dist.all_reduce(reduce_tensor, op=dist.ReduceOp.SUM)
     print(f"   [Rank {rank}] After reduce (sum): {reduce_tensor.item()}")
     
     print(f"\n{'='*60}")
-    print(f"🎉 [Rank {rank}] All tests passed! Shutting down...")
+    print(f"[SUCCESS] [Rank {rank}] All tests passed! Shutting down...")
     print(f"{'='*60}\n")
     
     dist.destroy_process_group()

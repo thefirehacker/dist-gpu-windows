@@ -1,5 +1,5 @@
 # Windows Multi-Node Distributed Training Requirements
-# Install with: pip install -r requirements.txt
+# Install with: pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu118
 
 # PyTorch with CUDA 11.8 support
 torch==2.7.1+cu118
@@ -10,3 +10,6 @@ nbdistributed
 
 # Additional utilities
 numpy==1.26.4
+
+# Optional: For better performance on Windows
+# psutil>=5.9.0
