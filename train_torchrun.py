@@ -3,9 +3,6 @@ import socket
 import torch
 import torch.distributed as dist
 
-# Fix for Windows: Disable libuv if PyTorch was built without it
-os.environ['USE_LIBUV'] = '0'
-
 
 def infer_device() -> torch.device:
     if torch.cuda.is_available():
@@ -16,8 +13,14 @@ def infer_device() -> torch.device:
 
 
 def main() -> None:
+    # Use NCCL for GPU, Gloo for CPU
+    # NCCL is much faster for GPU-to-GPU communication
+    backend = "nccl" if torch.cuda.is_available() else "gloo"
+    
+    print(f"Initializing with backend: {backend}")
+    
     # torchrun provides env:// rendezvous; do not pass store/init_method here
-    dist.init_process_group(backend="gloo")
+    dist.init_process_group(backend=backend)
 
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -29,8 +32,9 @@ def main() -> None:
     )
 
     # Simple cross-rank check: gather all ranks
-    gathered_ranks = [torch.zeros(1, dtype=torch.int64) for _ in range(world_size)]
-    my_rank_tensor = torch.tensor([rank], dtype=torch.int64)
+    # Move tensors to GPU if using NCCL
+    gathered_ranks = [torch.zeros(1, dtype=torch.int64, device=device) for _ in range(world_size)]
+    my_rank_tensor = torch.tensor([rank], dtype=torch.int64, device=device)
     dist.all_gather(gathered_ranks, my_rank_tensor)
     print(f"[rank {rank}] gathered={ [int(t.item()) for t in gathered_ranks] }")
 
