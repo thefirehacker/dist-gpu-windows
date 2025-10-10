@@ -11,6 +11,7 @@ import os
 import socket
 import torch
 import torch.distributed as dist
+from datetime import timedelta
 
 
 def infer_device() -> torch.device:
@@ -44,6 +45,7 @@ def main():
     args = parser.parse_args()
     
     # Set environment variables for distributed training
+    # Use the provided master address for all ranks
     os.environ['MASTER_ADDR'] = args.master_addr
     os.environ['MASTER_PORT'] = args.master_port
     os.environ['WORLD_SIZE'] = str(args.world_size)
@@ -64,18 +66,26 @@ def main():
     
     # Initialize process group using tcp:// init method
     # This avoids the broken TCPStore that torchrun uses
+    # Force IP address to avoid hostname resolution issues
     init_method = f'tcp://{args.master_addr}:{args.master_port}'
+    
+    # Set environment variables to force IP usage and avoid hostname resolution
+    os.environ['GLOO_SOCKET_IFNAME'] = '*'
+    os.environ['NCCL_SOCKET_IFNAME'] = '*'
+    os.environ['MASTER_ADDR'] = args.master_addr
+    os.environ['MASTER_PORT'] = args.master_port
     
     print(f"[INFO] Initializing process group...")
     print(f"   Init method: {init_method}")
     
     try:
+        # Use environment variables only (no init_method)
+        # This bypasses some of the hostname resolution issues
         dist.init_process_group(
             backend=args.backend,
-            init_method=init_method,
             world_size=args.world_size,
             rank=args.rank,
-            timeout=torch.distributed.timedelta(seconds=30)
+            timeout=timedelta(seconds=30)
         )
     except Exception as e:
         print(f"[ERROR] Failed to initialize: {e}")
