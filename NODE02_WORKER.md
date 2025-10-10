@@ -51,14 +51,23 @@ torchrun 2.x.x
 **Open PowerShell as Administrator on the Windows host** and run:
 
 ```powershell
-# Open rendezvous port (29400)
-New-NetFirewallRule -DisplayName "PyTorch Distributed 29400" -Direction Inbound -LocalPort 29400 -Protocol TCP -Action Allow
+# OPTION A: Disable Windows Firewall for Private Network (Recommended for initial testing)
+Set-NetFirewallProfile -Profile Private -Enabled False
 
-# Open NCCL communication port range (for GPU-to-GPU communication)
+# Verify firewall is disabled
+Get-NetFirewallProfile | Select-Object Name, Enabled
+
+# OPTION B: Keep firewall enabled and add specific rules
+New-NetFirewallRule -DisplayName "PyTorch Distributed 29500" -Direction Inbound -LocalPort 29500 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "NCCL Communication Ports" -Direction Inbound -LocalPort 20000-40000 -Protocol TCP -Action Allow
+
+# Also allow ICMP (ping) for testing connectivity
+New-NetFirewallRule -DisplayName "Allow ICMPv4-In" -Protocol ICMPv4 -IcmpType 8 -Enabled True -Direction Inbound -Action Allow
 ```
 
-**Note:** Node 02 does NOT need port forwarding (no incoming connections from other nodes).
+**Note:** 
+- If using Option A, remember to re-enable firewall after testing: `Set-NetFirewallProfile -Profile Private -Enabled True`
+- Node 02 does NOT need port forwarding (no incoming connections from other nodes)
 
 ### 6. Get Node 01's Windows IP Address
 Ask Node 01 operator for their **Windows IP** (not WSL IP).
@@ -159,8 +168,8 @@ export NCCL_DEBUG=INFO
 ### Run Command:
 ```bash
 torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
-  --rdzv_backend=c10d \
-  --rdzv_endpoint=192.168.29.67:29400 \
+  --master_addr=192.168.29.67 \
+  --master_port=29500 \
   train_torchrun.py
 ```
 
@@ -175,14 +184,15 @@ torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
 ### Expected Output (If Successful):
 ```
 Initializing with backend: nccl
-NCCL version 2.x.x+cuda12.4
-NCCL INFO Bootstrap : Using eth0:172.x.x.x<0>
-NCCL INFO NET/Plugin : No plugin found (libnccl-net.so)
-NCCL INFO NCCL_IB_DISABLE set by environment to 1
-NCCL INFO NCCL_P2P_DISABLE set by environment to 1
-NCCL INFO Channel 00/02 : 1 -> 0 via NET/Socket/0
-NCCL INFO Connected all rings
 [rank 1] world_size=2 device=cuda hostname=TUF-Node02
+TUF-Node02:556:556 [0] NCCL INFO NCCL_SOCKET_IFNAME set by environment to eth0
+TUF-Node02:556:556 [0] NCCL INFO Bootstrap : Using eth0:192.168.29.197<0>
+TUF-Node02:556:556 [0] NCCL INFO NET/Plugin: No plugin found (libnccl-net.so)
+TUF-Node02:556:556 [0] NCCL INFO NET/Plugin: Using internal network plugin.
+NCCL version 2.21.5+cuda12.4
+TUF-Node02:556:574 [0] NCCL INFO NCCL_IB_DISABLE set by environment to 1.
+TUF-Node02:556:574 [0] NCCL INFO NET/Socket : Using [0]eth0:192.168.29.197<0>
+TUF-Node02:556:574 [0] NCCL INFO Using network Socket
 [rank 1] gathered=[0, 1]
 [rank 1] barrier OK; shutting down
 ```
@@ -208,6 +218,28 @@ NCCL INFO Connected all rings
   1. **Use Option 1 (Gloo backend)** - this is the recommended workaround for WSL
   2. Alternative: Move to native Linux on both machines for full NCCL support
   3. Advanced: Try WSL2 with mirrored networking (Windows 11 22H2+) - experimental
+
+### NCCL error: "socketStartConnect: Connect to IP<port> failed : Software caused connection abort"
+- **Cause**: Firewall or antivirus (e.g., Norton, Avira) blocking NCCL GPU-to-GPU communication
+- **Fix**:
+  1. **Disable antivirus firewall temporarily** (e.g., Norton Security/Firewall, Avira)
+  2. **Disable Windows Firewall for Private network** (see Step 5 - Option A)
+  3. Add firewall exceptions for Python and the NCCL port range (20000-40000)
+  4. Check if both nodes have WSL mirrored networking enabled
+  5. Verify both nodes can ping each other: `ping 192.168.29.67`
+
+### Ping fails to Node 01 / Router AP Isolation
+- **Cause**: Router has AP Isolation enabled, blocking WiFi clients from communicating
+- **Fix**:
+  1. **Access router admin** (usually `http://192.168.29.1` for Jio Fiber)
+  2. Find and **disable "AP Isolation"** or "Client Isolation" in WiFi settings
+  3. **Reboot router** after changing settings
+  4. Alternative: **Use direct Ethernet cable** between laptops (recommended for best performance):
+     - Connect both laptops with an Ethernet cable
+     - On Node 01: Set static IP `10.0.0.1` on Ethernet adapter
+     - On Node 02: Set static IP `10.0.0.2` on Ethernet adapter
+     - Use `--master_addr=10.0.0.1` in training commands
+     - Benefits: No router issues, lower latency, higher bandwidth
 
 ### Wrong IP address
 - **Cause**: Using WSL IP instead of Windows IP
