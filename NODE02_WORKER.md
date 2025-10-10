@@ -1,92 +1,98 @@
-# Node 02 - Worker (Rank 1)
+# Node 02 - Worker (Rank 1) - WSL Setup
 
-## Setup
+## Prerequisites
 
-### 1. Create Virtual Environment
+1. **Install WSL Ubuntu** on Windows
+2. **Install NVIDIA CUDA on WSL driver** on Windows host
+3. **Clone the repo** in WSL: `git clone <repo-url> ~/dist-gpu-windows`
+
+## Setup (Run in WSL Ubuntu)
+
+### 1. Update System & Install Tools
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y build-essential python3 python3-pip python3-venv git
 ```
 
-### 2. Install Dependencies
+### 2. Create Virtual Environment
 ```bash
-pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu118
+cd ~/dist-gpu-windows
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### 3. Verify Installation
+### 3. Install PyTorch with CUDA
 ```bash
-python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+pip install --upgrade pip setuptools wheel
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-### 4. Get Node 01's IP Address
-Ask Node 01 operator for their IP address.
+### 4. Verify Installation
+```bash
+python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('NCCL:', torch.distributed.is_nccl_available())"
+```
+
+**Expected output:**
+```
+PyTorch: 2.x.x
+CUDA: True
+NCCL: True
+```
+
+### 5. Get Node 01's Windows IP Address
+Ask Node 01 operator for their **Windows IP** (not WSL IP).
 Example: `192.168.29.67`
-
-### 5. Edit `run_node1.sh`
-```bash
-NODE0_IP="192.168.29.67"  # Change to Node 01's IP
-```
 
 ### 6. Test Connection (Optional)
 ```bash
-ping 192.168.29.67  # Use Node 01's actual IP
+ping 192.168.29.67  # Use Node 01's Windows IP
 ```
 
 ## Run
 
 **Start this SECOND (after Node 01 is running):**
 
-```bash
-# Option 1: Using the script
-bash run_node1.sh
+In WSL, with virtual environment activated:
 
-# Option 2: Direct command
-python train_multinode.py --rank 1 --world-size 2 --master-addr 192.168.29.67
+```bash
+torchrun --nnodes=2 --node_rank=1 --nproc_per_node=1 \
+  --rdzv_backend=c10d \
+  --rdzv_endpoint=192.168.29.67:29400 \
+  train_torchrun.py
 ```
+
+**Replace `192.168.29.67` with Node 01's actual Windows IP address.**
 
 ## Expected Output
 
 ```
-Starting Node 1 (Worker)
-Connecting to Node 0 at: 192.168.29.67
-
-============================================================
-Multi-Node Distributed Training Setup
-============================================================
-Local IP:     [YOUR_IP]
-Master Addr:  192.168.29.67
-Master Port:  29500
-Rank:         1
-World Size:   2
-Backend:      gloo
-============================================================
-
-[INFO] Initializing process group...
-   Init method: tcp://192.168.29.67:29500
-[SUCCESS] Successfully initialized!
-   Rank: 1/2
-   Device: cuda
-   Hostname: [YOUR-PC-NAME]
-
-[TEST] Test 1: All-gather operation...
-   [Rank 1] Gathered ranks: [0, 1]
-   
-[TEST] Test 2: Broadcast from rank 0...
-   [Rank 1] Received: [42.0, 100.0, 256.0]
-   
-[TEST] Test 3: Barrier synchronization...
-   [Rank 1] [SUCCESS] Barrier passed!
-   
-[TEST] Test 4: All-reduce (sum)...
-   [Rank 1] After reduce (sum): 3.0
-   
-============================================================
-[SUCCESS] [Rank 1] All tests passed! Shutting down...
-============================================================
+Initializing with backend: nccl
+[rank 1] world_size=2 device=cuda hostname=YOUR-HOSTNAME
+[rank 1] gathered=[0, 1]
+[rank 1] barrier OK; shutting down
 ```
 
 ## Troubleshooting
 
-- **Connection refused**: Node 01 not started yet or firewall blocking
-- **Timeout**: Check if you can ping Node 01's IP
-- **Wrong IP**: Verify Node 01's IP address with operator
+### Connection refused or timeout
+- **Cause**: Node 01 not started yet, or firewall blocking, or port forwarding not set up
+- **Fix**: 
+  1. Ensure Node 01 is running first
+  2. Verify Node 01 has port forwarding set up (see Node 01 setup)
+  3. Check if you can ping Node 01's Windows IP
+
+### Wrong IP address
+- **Cause**: Using WSL IP instead of Windows IP
+- **Fix**: Use Node 01's **Windows IP** (from `ipconfig`), NOT the WSL IP (from `hostname -I`)
+
+### NCCL not available
+- **Cause**: PyTorch installed without CUDA support
+- **Fix**: 
+  ```bash
+  pip uninstall torch torchvision torchaudio -y
+  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+  ```
+
+### CUDA not available
+- **Cause**: NVIDIA driver not installed on Windows host
+- **Fix**: Install NVIDIA CUDA on WSL driver from https://developer.nvidia.com/cuda/wsl
