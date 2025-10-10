@@ -56,11 +56,23 @@ Example output: `192.168.29.67` (your Windows IP - share this with Node 02)
 **Open PowerShell as Administrator** and run:
 
 ```powershell
-# Open rendezvous port (29400)
-New-NetFirewallRule -DisplayName "PyTorch Distributed 29400" -Direction Inbound -LocalPort 29400 -Protocol TCP -Action Allow
+# OPTION A: Disable Windows Firewall for Private Network (Recommended for initial testing)
+Set-NetFirewallProfile -Profile Private -Enabled False
 
-# Open NCCL communication port range (for GPU-to-GPU communication)
+# Verify firewall is disabled
+Get-NetFirewallProfile | Select-Object Name, Enabled
+
+# OPTION B: Keep firewall enabled and add specific rules
+New-NetFirewallRule -DisplayName "PyTorch Distributed 29500" -Direction Inbound -LocalPort 29500 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "NCCL Communication Ports" -Direction Inbound -LocalPort 20000-40000 -Protocol TCP -Action Allow
+
+# Also allow ICMP (ping) for testing connectivity
+New-NetFirewallRule -DisplayName "Allow ICMPv4-In" -Protocol ICMPv4 -IcmpType 8 -Enabled True -Direction Inbound -Action Allow
+```
+
+**Note:** If using Option A, remember to re-enable firewall after testing:
+```powershell
+Set-NetFirewallProfile -Profile Private -Enabled True
 ```
 
 ### 5. Setup Port Forwarding (PowerShell as Admin)
@@ -188,12 +200,12 @@ export NCCL_DEBUG=INFO
 ### Run Command:
 ```bash
 torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
-  --rdzv_backend=c10d \
-  --rdzv_endpoint=192.168.29.67:29400 \
+  --master_addr=192.168.29.67 \
+  --master_port=29500 \
   train_torchrun.py
 ```
 
-**Replace `192.168.29.67` with your actual IP (should be same as Windows IP with mirrored mode).**
+**Replace `192.168.29.67` with your actual Windows IP (should be same as WSL IP with mirrored mode).**
 
 **Note:** With mirrored networking, your WSL IP = Windows IP, so no port forwarding is needed!
 
@@ -206,14 +218,16 @@ torchrun --nnodes=2 --node_rank=0 --nproc_per_node=1 \
 ### Expected Output (If Successful):
 ```
 Initializing with backend: nccl
-NCCL version 2.x.x+cuda12.4
-NCCL INFO Bootstrap : Using eth0:172.20.5.204<0>
-NCCL INFO NET/Plugin : No plugin found (libnccl-net.so)
-NCCL INFO NCCL_IB_DISABLE set by environment to 1
-NCCL INFO NCCL_P2P_DISABLE set by environment to 1
-NCCL INFO Channel 00/02 : 0 -> 1 via NET/Socket/0
-NCCL INFO Connected all rings
 [rank 0] world_size=2 device=cuda hostname=AIEDX-AsusTUF
+AIEDX-AsusTUF:706:706 [0] NCCL INFO NCCL_SOCKET_IFNAME set by environment to eth0
+AIEDX-AsusTUF:706:706 [0] NCCL INFO Bootstrap : Using eth0:192.168.29.67<0>
+AIEDX-AsusTUF:706:706 [0] NCCL INFO NET/Plugin: No plugin found (libnccl-net.so)
+AIEDX-AsusTUF:706:706 [0] NCCL INFO NET/Plugin: Using internal network plugin.
+AIEDX-AsusTUF:706:706 [0] NCCL INFO cudaDriverVersion 12030
+NCCL version 2.21.5+cuda12.4
+AIEDX-AsusTUF:706:724 [0] NCCL INFO NCCL_IB_DISABLE set by environment to 1.
+AIEDX-AsusTUF:706:724 [0] NCCL INFO NET/Socket : Using [0]eth0:192.168.29.67<0>
+AIEDX-AsusTUF:706:724 [0] NCCL INFO Using network Socket
 [rank 0] gathered=[0, 1]
 [rank 0] barrier OK; shutting down
 ```
@@ -239,9 +253,30 @@ NCCL INFO Connected all rings
   2. Verify firewall rule exists: `Get-NetFirewallRule -DisplayName "PyTorch Distributed 29400"` (PowerShell)
   3. Test connectivity: `ping 192.168.29.67` from Node 02
 
-### NCCL timeout or connection reset (Option 2)
+### NCCL timeout or connection reset (Option B)
 - **Cause**: WSL2 NAT networking limitation - NCCL cannot work reliably across WSL instances on different machines
-- **Fix**: Use Option 1 (Gloo backend) instead, OR move to native Linux for full NCCL support
+- **Fix**: Use Option A (Gloo backend) instead, OR move to native Linux for full NCCL support
+
+### NCCL error: "socketStartConnect: Connect to IP<port> failed : Software caused connection abort"
+- **Cause**: Firewall or antivirus (e.g., Norton) blocking NCCL GPU-to-GPU communication
+- **Fix**:
+  1. **Disable antivirus firewall temporarily** (e.g., Norton Security/Firewall, Avira)
+  2. **Disable Windows Firewall for Private network** (see Step 4 - Option A)
+  3. Add firewall exceptions for Python and the NCCL port range (20000-40000)
+  4. Ensure WSL mirrored networking is enabled (see Option B prerequisites)
+  5. Verify both nodes can ping each other: `ping 192.168.29.197` (Node 02's IP)
+
+### Ping fails between nodes / Router AP Isolation
+- **Cause**: Router has AP Isolation enabled, blocking WiFi clients from communicating
+- **Fix**:
+  1. **Access router admin** (usually `http://192.168.29.1` for Jio Fiber)
+  2. Find and **disable "AP Isolation"** or "Client Isolation" in WiFi settings
+  3. **Reboot router** after changing settings
+  4. Alternative: **Use direct Ethernet cable** between laptops (recommended for best performance):
+     - Connect laptops with Ethernet cable
+     - Set static IPs: Node 01 = `10.0.0.1`, Node 02 = `10.0.0.2`
+     - Use `--master_addr=10.0.0.1` in training commands
+     - Benefits: No router issues, lower latency, higher bandwidth
 
 ### NCCL not available
 - **Cause**: PyTorch installed without CUDA support
