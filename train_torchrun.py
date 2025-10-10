@@ -17,6 +17,16 @@ def main() -> None:
     # NCCL is much faster for GPU-to-GPU communication
     backend = "nccl" if torch.cuda.is_available() else "gloo"
     
+    # Configure NCCL for cross-machine communication
+    if backend == "nccl":
+        # Set NCCL to use TCP for cross-machine (not IB/RoCE)
+        os.environ['NCCL_IB_DISABLE'] = '1'
+        os.environ['NCCL_P2P_DISABLE'] = '1'
+        # Use TCP sockets
+        os.environ['NCCL_SOCKET_IFNAME'] = 'eth0'
+        # Enable debug for troubleshooting
+        os.environ['NCCL_DEBUG'] = 'INFO'
+    
     print(f"Initializing with backend: {backend}")
     
     # torchrun provides env:// rendezvous; do not pass store/init_method here
